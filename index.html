@@ -1,0 +1,596 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>MEHKO Dashboard</title>
+
+    <!-- Tailwind CSS (for styling) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- React + ReactDOM + Babel (for JSX in-browser) -->
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <!-- PapaParse (for CSV parsing) -->
+    <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+
+    <!-- Chart.js (for charts) -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  </head>
+  <body class="bg-slate-950 text-slate-100">
+    <div id="root"></div>
+
+    <script type="text/babel">
+      const { useState, useMemo, useEffect, useRef } = React;
+
+      const DAY_ORDER = [
+        "Monday",
+        "Tuesday",
+        "Wednesday",
+        "Thursday",
+        "Friday",
+        "Saturday",
+        "Sunday",
+      ];
+
+      function OrdersOverTimeChart({ data }) {
+        const canvasRef = useRef(null);
+        const chartRef = useRef(null);
+
+        useEffect(() => {
+          if (!canvasRef.current) return;
+
+          const ctx = canvasRef.current.getContext("2d");
+          if (chartRef.current) {
+            chartRef.current.destroy();
+          }
+
+          const labels = data.map((d) => d.date);
+          const orders = data.map((d) => d.orders);
+          const revenue = data.map((d) => d.revenue);
+
+          chartRef.current = new Chart(ctx, {
+            type: "line",
+            data: {
+              labels,
+              datasets: [
+                {
+                  label: "Orders",
+                  data: orders,
+                  borderWidth: 2,
+                  tension: 0.3,
+                },
+                {
+                  label: "Revenue ($)",
+                  data: revenue,
+                  borderWidth: 2,
+                  tension: 0.3,
+                },
+              ],
+            },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              scales: {
+                x: {
+                  ticks: { color: "#9ca3af" },
+                  grid: { color: "#1f2937" },
+                },
+                y: {
+                  ticks: { color: "#9ca3af" },
+                  grid: { color: "#1f2937" },
+                },
+              },
+              plugins: {
+                legend: {
+                  labels: { color: "#e5e7eb" },
+                },
+              },
+            },
+          });
+
+          return () => {
+            if (chartRef.current) {
+              chartRef.current.destroy();
+            }
+          };
+        }, [data]);
+
+        return <canvas ref={canvasRef}></canvas>;
+      }
+
+      function OrdersByDayChart({ data }) {
+        const canvasRef = useRef(null);
+        const chartRef = useRef(null);
+
+        useEffect(() => {
+          if (!canvasRef.current) return;
+          const ctx = canvasRef.current.getContext("2d");
+          if (chartRef.current) chartRef.current.destroy();
+
+          const labels = data.map((d) => d.day);
+          const values = data.map((d) => d.orders);
+
+          chartRef.current = new Chart(ctx, {
+            type: "bar",
+            data: {
+              labels,
+              datasets: [
+                {
+                  label: "Orders",
+                  data: values,
+                  borderWidth: 1,
+                },
+              ],
+            },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              scales: {
+                x: {
+                  ticks: { color: "#9ca3af" },
+                  grid: { color: "#1f2937" },
+                },
+                y: {
+                  ticks: { color: "#9ca3af" },
+                  grid: { color: "#1f2937" },
+                },
+              },
+              plugins: {
+                legend: { labels: { color: "#e5e7eb" } },
+              },
+            },
+          });
+
+          return () => {
+            if (chartRef.current) chartRef.current.destroy();
+          };
+        }, [data]);
+
+        return <canvas ref={canvasRef}></canvas>;
+      }
+
+      function TopItemsChart({ data }) {
+        const canvasRef = useRef(null);
+        const chartRef = useRef(null);
+
+        useEffect(() => {
+          if (!canvasRef.current) return;
+          const ctx = canvasRef.current.getContext("2d");
+          if (chartRef.current) chartRef.current.destroy();
+
+          const labels = data.map((d) => d.item);
+          const values = data.map((d) => d.count);
+
+          chartRef.current = new Chart(ctx, {
+            type: "bar",
+            data: {
+              labels,
+              datasets: [
+                {
+                  label: "Orders",
+                  data: values,
+                  borderWidth: 1,
+                },
+              ],
+            },
+            options: {
+              indexAxis: "y",
+              responsive: true,
+              maintainAspectRatio: false,
+              scales: {
+                x: {
+                  ticks: { color: "#9ca3af" },
+                  grid: { color: "#1f2937" },
+                },
+                y: {
+                  ticks: { color: "#9ca3af" },
+                  grid: { color: "#1f2937" },
+                },
+              },
+              plugins: {
+                legend: { labels: { color: "#e5e7eb" } },
+              },
+            },
+          });
+
+          return () => {
+            if (chartRef.current) chartRef.current.destroy();
+          };
+        }, [data]);
+
+        return <canvas ref={canvasRef}></canvas>;
+      }
+
+      function MehkoDashboard({ rows }) {
+        const [timeframe, setTimeframe] = useState("all"); // "all" | "30" | "7"
+
+        // Aggregate per order (since each row is one item in an order)
+        const orders = useMemo(() => {
+          const map = new Map();
+          rows.forEach((r) => {
+            if (!r.order_id || !r.order_date) return;
+            const id = Number(r.order_id);
+            if (!map.has(id)) {
+              // Ensure order_date is a plain YYYY-MM-DD string
+              const dateStr = String(r.order_date).split(" ")[0];
+              map.set(id, {
+                order_id: id,
+                order_date: dateStr,
+                day_of_week: r.day_of_week,
+                hour_of_day: Number(r.hour_of_day),
+                customer_id: r.customer_id,
+                is_repeat_customer:
+                  r.is_repeat_customer === true ||
+                  r.is_repeat_customer === "true" ||
+                  r.is_repeat_customer === "TRUE",
+                combo_type: r.combo_type,
+                order_total: Number(r.order_total) || 0,
+              });
+            }
+          });
+          return Array.from(map.values());
+        }, [rows]);
+
+        // All distinct dates present in the data (sorted)
+        const allDatesSorted = useMemo(() => {
+          const set = new Set(orders.map((o) => o.order_date));
+          return Array.from(set).sort(); // ISO date strings sort correctly
+        }, [orders]);
+
+        // Apply timeframe filter WITHOUT using JS date math (just last N dates in sorted list)
+        const filteredOrders = useMemo(() => {
+          if (timeframe === "all") return orders;
+          const daysBack = timeframe === "30" ? 30 : 7;
+          if (allDatesSorted.length === 0) return [];
+          const selectedDates = allDatesSorted.slice(-daysBack); // last N days in the dataset
+          const allowed = new Set(selectedDates);
+          return orders.filter((o) => allowed.has(o.order_date));
+        }, [orders, allDatesSorted, timeframe]);
+
+        const filteredRows = useMemo(() => {
+          const allowed = new Set(filteredOrders.map((o) => o.order_id));
+          return rows.filter((r) => allowed.has(Number(r.order_id)));
+        }, [rows, filteredOrders]);
+
+        const kpis = useMemo(() => {
+          const totalOrders = filteredOrders.length;
+          const totalRevenue = filteredOrders.reduce(
+            (sum, o) => sum + (Number(o.order_total) || 0),
+            0
+          );
+          const repeatOrders = filteredOrders.filter(
+            (o) => o.is_repeat_customer
+          ).length;
+          const aov = totalOrders ? totalRevenue / totalOrders : 0;
+          const repeatRate = totalOrders ? repeatOrders / totalOrders : 0;
+          return { totalOrders, totalRevenue, aov, repeatRate };
+        }, [filteredOrders]);
+
+        const ordersOverTime = useMemo(() => {
+          const map = new Map();
+          filteredOrders.forEach((o) => {
+            const date = o.order_date;
+            if (!map.has(date)) {
+              map.set(date, { date, orders: 0, revenue: 0 });
+            }
+            const entry = map.get(date);
+            entry.orders += 1;
+            entry.revenue += Number(o.order_total) || 0;
+          });
+          const arr = Array.from(map.values());
+          arr.sort((a, b) => (a.date < b.date ? -1 : 1));
+          return arr;
+        }, [filteredOrders]);
+
+        const ordersByDayOfWeek = useMemo(() => {
+          const counts = {};
+          DAY_ORDER.forEach((d) => (counts[d] = 0));
+          filteredOrders.forEach((o) => {
+            if (!counts[o.day_of_week]) counts[o.day_of_week] = 0;
+            counts[o.day_of_week] += 1;
+          });
+          return DAY_ORDER.map((d) => ({
+            day: d,
+            orders: counts[d] || 0,
+          }));
+        }, [filteredOrders]);
+
+        const ordersByHour = useMemo(() => {
+          const counts = {};
+          for (let h = 0; h < 24; h++) counts[h] = 0;
+          filteredOrders.forEach((o) => {
+            const h = Number(o.hour_of_day);
+            counts[h] = (counts[h] || 0) + 1;
+          });
+          return Object.keys(counts)
+            .map((h) => ({ hour: Number(h), orders: counts[h] }))
+            .filter((e) => e.orders > 0);
+        }, [filteredOrders]);
+
+        const topItems = useMemo(() => {
+          const counts = {};
+          filteredRows.forEach((r) => {
+            if (!r.item_name) return;
+            counts[r.item_name] = (counts[r.item_name] || 0) + 1;
+          });
+          return Object.entries(counts)
+            .map(([item, count]) => ({ item, count }))
+            .sort((a, b) => b.count - a.count)
+            .slice(0, 10);
+        }, [filteredRows]);
+
+        const heatmapData = useMemo(() => {
+          const matrix = {};
+          DAY_ORDER.forEach((d) => {
+            matrix[d] = {};
+            for (let h = 0; h < 24; h++) matrix[d][h] = 0;
+          });
+          filteredOrders.forEach((o) => {
+            const day = o.day_of_week;
+            const h = Number(o.hour_of_day);
+            if (!matrix[day]) matrix[day] = {};
+            matrix[day][h] = (matrix[day][h] || 0) + 1;
+          });
+          return DAY_ORDER.map((day) => ({
+            day,
+            hours: Array.from({ length: 24 }, (_, h) => ({
+              hour: h,
+              value: matrix[day][h] || 0,
+            })),
+          }));
+        }, [filteredOrders]);
+
+        function heatColor(value) {
+          if (value === 0) return "bg-slate-900";
+          if (value === 1) return "bg-emerald-900";
+          if (value === 2) return "bg-emerald-700";
+          if (value <= 4) return "bg-emerald-500";
+          return "bg-emerald-400";
+        }
+
+        return (
+          <div className="w-full min-h-screen p-6 space-y-6">
+            <header className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+              <div>
+                <h1 className="text-2xl font-bold">
+                  Vegan Rannaghor • MEHKO Dashboard
+                </h1>
+                <p className="text-sm text-slate-400">
+                  Track orders, repeat customers, peak times, and menu
+                  performance.
+                </p>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="text-sm text-slate-400">Timeframe:</span>
+                <select
+                  className="bg-slate-900 border border-slate-700 rounded px-3 py-1 text-sm"
+                  value={timeframe}
+                  onChange={(e) => setTimeframe(e.target.value)}
+                >
+                  <option value="all">All data</option>
+                  <option value="30">Last 30 days (in dataset)</option>
+                  <option value="7">Last 7 days (in dataset)</option>
+                </select>
+              </div>
+            </header>
+
+            <p className="text-xs text-slate-400">
+              Showing {filteredOrders.length} orders across{" "}
+              {new Set(filteredOrders.map((o) => o.order_date)).size} days.
+            </p>
+
+            {/* KPI Row */}
+            <section className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+              <div className="bg-slate-900 border border-slate-800 rounded-xl p-4">
+                <div className="text-xs uppercase text-slate-400">
+                  Total Orders
+                </div>
+                <div className="text-2xl font-semibold mt-2">
+                  {kpis.totalOrders.toLocaleString()}
+                </div>
+              </div>
+              <div className="bg-slate-900 border border-slate-800 rounded-xl p-4">
+                <div className="text-xs uppercase text-slate-400">
+                  Total Revenue
+                </div>
+                <div className="text-2xl font-semibold mt-2">
+                  ${kpis.totalRevenue.toFixed(0)}
+                </div>
+              </div>
+              <div className="bg-slate-900 border border-slate-800 rounded-xl p-4">
+                <div className="text-xs uppercase text-slate-400">
+                  Average Order Value
+                </div>
+                <div className="text-2xl font-semibold mt-2">
+                  ${kpis.aov.toFixed(2)}
+                </div>
+              </div>
+              <div className="bg-slate-900 border border-slate-800 rounded-xl p-4">
+                <div className="text-xs uppercase text-slate-400">
+                  Repeat Customer Rate
+                </div>
+                <div className="text-2xl font-semibold mt-2">
+                  {(kpis.repeatRate * 100).toFixed(1)}%
+                </div>
+              </div>
+            </section>
+
+            {/* Charts row 1 */}
+            <section className="grid gap-4 lg:grid-cols-2">
+              <div className="bg-slate-900 border border-slate-800 rounded-xl p-4">
+                <div className="text-sm font-semibold mb-2">
+                  Orders & Revenue Over Time
+                </div>
+                <div className="h-64">
+                  <OrdersOverTimeChart data={ordersOverTime} />
+                </div>
+              </div>
+              <div className="bg-slate-900 border border-slate-800 rounded-xl p-4">
+                <div className="text-sm font-semibold mb-2">
+                  Orders by Day of Week
+                </div>
+                <div className="h-64">
+                  <OrdersByDayChart data={ordersByDayOfWeek} />
+                </div>
+              </div>
+            </section>
+
+            {/* Charts row 2 */}
+            <section className="grid gap-4 lg:grid-cols-2">
+              <div className="bg-slate-900 border border-slate-800 rounded-xl p-4">
+                <div className="text-sm font-semibold mb-2">Top 10 Items</div>
+                <div className="h-64">
+                  <TopItemsChart data={topItems} />
+                </div>
+              </div>
+              <div className="bg-slate-900 border border-slate-800 rounded-xl p-4">
+                <div className="text-sm font-semibold mb-2">
+                  Orders by Hour (table)
+                </div>
+                <div className="max-h-64 overflow-auto text-sm">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="border-b border-slate-800">
+                        <th className="py-1 pr-2 text-slate-400">Hour</th>
+                        <th className="py-1 text-slate-400">Orders</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {ordersByHour.map((row) => (
+                        <tr key={row.hour} className="border-b border-slate-900">
+                          <td className="py-1 pr-2">{row.hour}:00</td>
+                          <td className="py-1">{row.orders}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </section>
+
+            {/* Heatmap */}
+            <section>
+              <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 space-y-3">
+                <div className="text-sm font-semibold">
+                  Peak Demand Heatmap (Day × Hour)
+                </div>
+                <div className="overflow-x-auto">
+                  <div className="min-w-[640px]">
+                    <div className="grid grid-cols-[120px_repeat(12,1fr)] gap-px text-xs mb-1">
+                      <div className="text-slate-400" />
+                      {Array.from({ length: 12 }, (_, i) => (
+                        <div
+                          key={i}
+                          className="text-center text-slate-400"
+                        >{`${i + 9}:00`}</div>
+                      ))}
+                    </div>
+                    {heatmapData.map((row) => {
+                      const relevantHours = row.hours.filter(
+                        (h) => h.hour >= 9 && h.hour <= 20
+                      );
+                      return (
+                        <div
+                          key={row.day}
+                          className="grid grid-cols-[120px_repeat(12,1fr)] gap-px mb-1"
+                        >
+                          <div className="text-xs py-1 pr-2 text-right text-slate-300">
+                            {row.day}
+                          </div>
+                          {relevantHours.map((h) => (
+                            <div
+                              key={h.hour}
+                              className={
+                                "h-6 text-[10px] text-center flex items-center justify-center " +
+                                heatColor(h.value)
+                              }
+                            >
+                              {h.value > 0 ? h.value : ""}
+                            </div>
+                          ))}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+                <p className="text-xs text-slate-500">
+                  Darker green = busier. Use this to decide when to open orders
+                  and when to prep.
+                </p>
+              </div>
+            </section>
+          </div>
+        );
+      }
+
+      function App() {
+        const [rows, setRows] = useState([]);
+
+        function handleFileChange(e) {
+          const file = e.target.files[0];
+          if (!file) return;
+          Papa.parse(file, {
+            header: true,
+            dynamicTyping: true,
+            skipEmptyLines: true,
+            complete: (results) => {
+              const data = results.data.filter(
+                (r) => r.order_id && (r.order_date || r.order_datetime)
+              );
+              setRows(data);
+            },
+          });
+        }
+
+        return (
+          <div className="min-h-screen flex flex-col">
+            <div className="border-b border-slate-800 bg-slate-950/80 backdrop-blur px-6 py-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+              <div>
+                <h1 className="text-lg font-semibold">
+                  MEHKO Dashboard Loader
+                </h1>
+                <p className="text-xs text-slate-400">
+                  Upload your combined orders CSV
+                  (order_id, order_datetime, order_date, day_of_week, hour_of_day, customer_id,
+                  is_repeat_customer, combo_type, order_total, item_name,
+                  item_category, item_price).
+                </p>
+              </div>
+              <label className="inline-flex items-center gap-2 text-sm cursor-pointer">
+                <span className="px-3 py-1.5 rounded bg-emerald-600 hover:bg-emerald-500 text-white font-medium">
+                  Choose CSV
+                </span>
+                <input
+                  type="file"
+                  accept=".csv,text/csv"
+                  className="hidden"
+                  onChange={handleFileChange}
+                />
+                <span className="text-xs text-slate-400">
+                  {rows.length
+                    ? `Loaded ${rows.length} rows`
+                    : "No file selected"}
+                </span>
+              </label>
+            </div>
+            <main className="flex-1">
+              {rows.length === 0 ? (
+                <div className="flex items-center justify-center h-full text-slate-400 text-sm px-4 text-center">
+                  Upload your MEHKO combined orders CSV above to see the
+                  dashboard.
+                </div>
+              ) : (
+                <MehkoDashboard rows={rows} />
+              )}
+            </main>
+          </div>
+        );
+      }
+
+      const root = ReactDOM.createRoot(document.getElementById("root"));
+      root.render(<App />);
+    </script>
+  </body>
+</html>
